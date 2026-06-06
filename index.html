@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>محاكاة حركة كرة القدم</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --panel: rgba(8, 14, 18, 0.82);
+            --panel-border: rgba(255, 255, 255, 0.14);
+            --accent: #43d17a;
+            --text: #f4f7f5;
+            --muted: #aab8b1;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #101619;
+            font-family: Arial, Tahoma, sans-serif;
+            cursor: default;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .panel {
+            position: absolute;
+            color: var(--text);
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            box-shadow: 0 18px 46px rgba(0, 0, 0, 0.34);
+            backdrop-filter: blur(10px);
+            user-select: none;
+        }
+
+        #info {
+            top: 12px;
+            left: 12px;
+            max-width: 310px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.75;
+            pointer-events: none;
+            direction: rtl;
+        }
+
+        #info h3,
+        #controlsPanel h3 {
+            margin: 0 0 10px;
+            color: var(--accent);
+            font-size: 16px;
+        }
+
+        #controlsPanel {
+            top: 12px;
+            right: 12px;
+            width: 330px;
+            max-width: calc(100vw - 24px);
+            max-height: calc(100vh - 24px);
+            overflow-y: auto;
+            padding: 16px;
+            border-radius: 14px;
+            font-size: 13px;
+            line-height: 1.55;
+            pointer-events: auto;
+        }
+
+        #controlsPanel label {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 10px;
+            align-items: center;
+            margin: 10px 0 5px;
+            color: var(--muted);
+        }
+
+        #controlsPanel .value,
+        .computed-value {
+            color: var(--text);
+            font-weight: 700;
+            direction: ltr;
+        }
+
+        #controlsPanel input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent);
+        }
+
+        .computed {
+            margin: 12px 0;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(67, 209, 122, 0.32);
+            background: rgba(67, 209, 122, 0.12);
+        }
+
+        .computed label {
+            margin: 0 !important;
+            color: #c4f3d4 !important;
+        }
+
+        .camera-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin: 12px 0 4px;
+        }
+
+        #controlsPanel button {
+            width: 100%;
+            margin: 10px 0 0;
+            padding: 11px 12px;
+            border: 0;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #25b86a, #3fd48e);
+            color: #06100b;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        #controlsPanel .camera-row button {
+            margin: 0;
+            padding: 9px 8px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: var(--text);
+            font-size: 12px;
+        }
+
+        #controlsPanel .camera-row button.active {
+            background: rgba(67, 209, 122, 0.26);
+            border-color: rgba(67, 209, 122, 0.65);
+            color: #d9ffe6;
+        }
+
+        #controlsPanel button:hover {
+            filter: brightness(1.08);
+        }
+
+        @media (max-width: 760px) {
+            #info {
+                display: none;
+            }
+
+            #controlsPanel {
+                right: 8px;
+                left: 8px;
+                top: 8px;
+                width: auto;
+                max-height: 48vh;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="info" class="panel">
+        <h3>محاكاة حركة كرة القدم</h3>
+        الماوس الأيسر: ركل الكرة باتجاه الكاميرا<br>
+        السحب بالماوس: تدوير الكاميرا حول الملعب<br>
+        عجلة الماوس: تقريب وإبعاد الكاميرا<br>
+        1/2/3/4: تغيير وضع الكاميرا<br>
+        R: إعادة الكرة إلى الوسط
+    </div>
+
+    <div id="controlsPanel" class="panel">
+        <h3>إعدادات القوة والفيزياء</h3>
+
+        <div class="camera-row" aria-label="أوضاع الكاميرا">
+            <button id="cameraFreeBtn" type="button">حرة</button>
+            <button id="cameraFollowBtn" type="button">تتبع</button>
+            <button id="cameraTopBtn" type="button">علوية</button>
+            <button id="cameraBallBtn" type="button">قريبة</button>
+        </div>
+
+        <label>قوة الركلة <span class="value" id="kickStrengthValue">18</span></label>
+        <input id="kickStrength" type="range" min="5" max="35" step="0.5" value="18">
+
+        <label>زاوية الارتفاع <span class="value" id="launchAngleValue">18</span></label>
+        <input id="launchAngle" type="range" min="0" max="45" step="1" value="18">
+
+        <label>دوران الكرة <span class="value" id="spinValue">8</span></label>
+        <input id="spin" type="range" min="0" max="20" step="0.5" value="8">
+
+        <label>زاوية الركلة الأفقية <span class="value" id="aimAngleValue">0</span></label>
+        <input id="aimAngle" type="range" min="-45" max="45" step="1" value="0">
+
+        <label>الاحتكاك مع الأرض <span class="value" id="frictionValue">0.50</span></label>
+        <input id="friction" type="range" min="0" max="1" step="0.01" value="0.50">
+
+        <label>معامل الارتداد <span class="value" id="restitutionValue">0.70</span></label>
+        <input id="restitution" type="range" min="0" max="0.9" step="0.01" value="0.70">
+
+        <label>الجاذبية <span class="value" id="gravityValue">9.81 m/s^2</span></label>
+        <input id="gravity" type="range" min="0" max="25" step="0.01" value="9.81">
+
+        <label>كثافة الهواء <span class="value" id="airDensityValue">1.225 kg/m³</span></label>
+        <input id="airDensity" type="range" min="0.5" max="2.0" step="0.005" value="1.225">
+
+        <label>درجة الحرارة <span class="value" id="temperatureValue">15°C</span></label>
+        <input id="temperature" type="range" min="-20" max="40" step="1" value="15">
+
+        <div class="computed">
+            <label>الكثافة الفعلية المحسوبة <span><span class="computed-value" id="computedDensityValue">1.225</span> kg/m³</span></label>
+        </div>
+
+        <label>معامل ماغنوس <span class="value" id="magnusValue">0.25</span></label>
+        <input id="magnus" type="range" min="0" max="1" step="0.01" value="0.25">
+
+        <label>مقاومة التدحرج <span class="value" id="rollingResistanceValue">0.015</span></label>
+        <input id="rollingResistance" type="range" min="0" max="0.1" step="0.001" value="0.015">
+
+        <button id="resetBallBtn">إعادة الكرة</button>
+    </div>
+
+    <script type="module" src="main.js"></script>
+</body>
+</html>
