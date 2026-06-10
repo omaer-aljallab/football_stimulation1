@@ -53,98 +53,85 @@
             direction: rtl;
         }
 
-        #info h3,
-        #controlsPanel h3 {
+        #info h3 {
             margin: 0 0 10px;
             color: var(--accent);
             font-size: 16px;
         }
 
-        #controlsPanel {
-            top: 12px;
-            right: 12px;
-            width: 330px;
-            max-width: calc(100vw - 24px);
+        .lil-gui.lil-root.compact-football-gui {
+            width: 258px !important;
             max-height: calc(100vh - 24px);
-            overflow-y: auto;
-            padding: 16px;
-            border-radius: 14px;
-            font-size: 13px;
-            line-height: 1.55;
-            pointer-events: auto;
-        }
-
-        #controlsPanel label {
-            display: grid;
-            grid-template-columns: 1fr auto;
-            gap: 10px;
-            align-items: center;
-            margin: 10px 0 5px;
-            color: var(--muted);
-        }
-
-        #controlsPanel .value,
-        .computed-value {
-            color: var(--text);
-            font-weight: 700;
+            position: fixed !important;
+            top: 12px !important;
+            right: 12px !important;
+            z-index: 20;
+            overflow: hidden;
             direction: ltr;
+            text-align: right;
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            box-shadow: 0 18px 46px rgba(0, 0, 0, 0.34);
+            backdrop-filter: blur(10px);
+            --background-color: rgba(8, 14, 18, 0.88);
+            --title-background-color: rgba(3, 8, 11, 0.92);
+            --title-text-color: var(--accent);
+            --text-color: var(--text);
+            --widget-color: rgba(255, 255, 255, 0.1);
+            --hover-color: rgba(255, 255, 255, 0.16);
+            --focus-color: rgba(67, 209, 122, 0.32);
+            --number-color: #7ee7a7;
+            --string-color: #c4f3d4;
+            --font-family: Arial, Tahoma, sans-serif;
+            --font-size: 11px;
+            --input-font-size: 11px;
+            --widget-height: 20px;
+            --padding: 4px;
+            --spacing: 4px;
+            --name-width: 50%;
+            --folder-indent: 5px;
+            --widget-border-radius: 3px;
         }
 
-        #controlsPanel input[type="range"] {
-            width: 100%;
-            accent-color: var(--accent);
+        .compact-football-gui > .lil-children {
+            max-height: calc(100vh - 54px);
         }
 
-        .computed {
-            margin: 12px 0;
-            padding: 10px 12px;
-            border-radius: 10px;
-            border: 1px solid rgba(67, 209, 122, 0.32);
-            background: rgba(67, 209, 122, 0.12);
+        .compact-football-gui .lil-title,
+        .compact-football-gui .lil-name {
+            direction: rtl;
+            text-align: right;
+            unicode-bidi: isolate;
         }
 
-        .computed label {
-            margin: 0 !important;
-            color: #c4f3d4 !important;
+        .compact-football-gui .lil-controller > .lil-name {
+            padding-right: var(--spacing);
+            padding-left: 0;
         }
 
-        .camera-row {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 8px;
-            margin: 12px 0 4px;
+        .compact-football-gui .lil-controller.lil-number.lil-has-slider input {
+            margin-left: var(--spacing);
+            margin-right: 0;
         }
 
-        #controlsPanel button {
-            width: 100%;
-            margin: 10px 0 0;
-            padding: 11px 12px;
-            border: 0;
-            border-radius: 10px;
-            background: linear-gradient(135deg, #25b86a, #3fd48e);
+        .compact-football-gui .lil-controller.lil-option .lil-display {
+            direction: rtl;
+            text-align: right;
+            padding-left: 1.75em;
+            padding-right: 0.55em;
+        }
+
+        .compact-football-gui .lil-controller.lil-option .lil-display::after {
+            right: auto;
+            left: 0;
+            padding-right: 0;
+            padding-left: 0.375em;
+        }
+
+        .compact-football-gui .lil-controller.lil-function button {
             color: #06100b;
-            font-size: 14px;
             font-weight: 700;
-            cursor: pointer;
-        }
-
-        #controlsPanel .camera-row button {
-            margin: 0;
-            padding: 9px 8px;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            color: var(--text);
-            font-size: 12px;
-        }
-
-        #controlsPanel .camera-row button.active {
-            background: rgba(67, 209, 122, 0.26);
-            border-color: rgba(67, 209, 122, 0.65);
-            color: #d9ffe6;
-        }
-
-        #controlsPanel button:hover {
-            filter: brightness(1.08);
+            background: var(--accent);
         }
 
         @media (max-width: 760px) {
@@ -152,12 +139,15 @@
                 display: none;
             }
 
-            #controlsPanel {
+            .lil-gui.lil-root.compact-football-gui {
+                width: min(244px, calc(100vw - 16px)) !important;
                 right: 8px;
-                left: 8px;
                 top: 8px;
-                width: auto;
-                max-height: 48vh;
+                max-height: 46vh;
+            }
+
+            .compact-football-gui > .lil-children {
+                max-height: calc(46vh - 24px);
             }
         }
     </style>
@@ -171,57 +161,6 @@
         1/2/3/4: تغيير وضع الكاميرا<br>
         R: إعادة الكرة إلى الوسط
     </div>
-
-    <div id="controlsPanel" class="panel">
-        <h3>إعدادات القوة والفيزياء</h3>
-
-        <div class="camera-row" aria-label="أوضاع الكاميرا">
-            <button id="cameraFreeBtn" type="button">حرة</button>
-            <button id="cameraFollowBtn" type="button">تتبع</button>
-            <button id="cameraTopBtn" type="button">علوية</button>
-            <button id="cameraBallBtn" type="button">قريبة</button>
-        </div>
-
-        <label>قوة الركلة <span class="value" id="kickStrengthValue">18</span></label>
-        <input id="kickStrength" type="range" min="5" max="35" step="0.5" value="18">
-
-        <label>زاوية الارتفاع <span class="value" id="launchAngleValue">18</span></label>
-        <input id="launchAngle" type="range" min="0" max="45" step="1" value="18">
-
-        <label>دوران الكرة <span class="value" id="spinValue">8</span></label>
-        <input id="spin" type="range" min="0" max="20" step="0.5" value="8">
-
-        <label>زاوية الركلة الأفقية <span class="value" id="aimAngleValue">0</span></label>
-        <input id="aimAngle" type="range" min="-45" max="45" step="1" value="0">
-
-        <label>الاحتكاك مع الأرض <span class="value" id="frictionValue">0.50</span></label>
-        <input id="friction" type="range" min="0" max="1" step="0.01" value="0.50">
-
-        <label>معامل الارتداد <span class="value" id="restitutionValue">0.70</span></label>
-        <input id="restitution" type="range" min="0" max="0.9" step="0.01" value="0.70">
-
-        <label>الجاذبية <span class="value" id="gravityValue">9.81 m/s^2</span></label>
-        <input id="gravity" type="range" min="0" max="25" step="0.01" value="9.81">
-
-        <label>كثافة الهواء <span class="value" id="airDensityValue">1.225 kg/m³</span></label>
-        <input id="airDensity" type="range" min="0.5" max="2.0" step="0.005" value="1.225">
-
-        <label>درجة الحرارة <span class="value" id="temperatureValue">15°C</span></label>
-        <input id="temperature" type="range" min="-20" max="40" step="1" value="15">
-
-        <div class="computed">
-            <label>الكثافة الفعلية المحسوبة <span><span class="computed-value" id="computedDensityValue">1.225</span> kg/m³</span></label>
-        </div>
-
-        <label>معامل ماغنوس <span class="value" id="magnusValue">0.25</span></label>
-        <input id="magnus" type="range" min="0" max="1" step="0.01" value="0.25">
-
-        <label>مقاومة التدحرج <span class="value" id="rollingResistanceValue">0.015</span></label>
-        <input id="rollingResistance" type="range" min="0" max="0.1" step="0.001" value="0.015">
-
-        <button id="resetBallBtn">إعادة الكرة</button>
-    </div>
-
     <script type="module" src="main.js"></script>
 </body>
 </html>

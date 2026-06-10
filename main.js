@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import GUI from 'lil-gui';
 import {
     createScene,
     setupLighting,
@@ -57,92 +58,106 @@ const physicsConfig = {
     }
 };
 
-const uiElements = {
-    kickStrength: document.getElementById('kickStrength'),
-    launchAngle: document.getElementById('launchAngle'),
-    spin: document.getElementById('spin'),
-    aimAngle: document.getElementById('aimAngle'),
-    friction: document.getElementById('friction'),
-    restitution: document.getElementById('restitution'),
-    gravity: document.getElementById('gravity'),
-    airDensity: document.getElementById('airDensity'),
-    temperature: document.getElementById('temperature'),
-    magnus: document.getElementById('magnus'),
-    rollingResistance: document.getElementById('rollingResistance'),
-    kickStrengthValue: document.getElementById('kickStrengthValue'),
-    launchAngleValue: document.getElementById('launchAngleValue'),
-    spinValue: document.getElementById('spinValue'),
-    aimAngleValue: document.getElementById('aimAngleValue'),
-    frictionValue: document.getElementById('frictionValue'),
-    restitutionValue: document.getElementById('restitutionValue'),
-    gravityValue: document.getElementById('gravityValue'),
-    airDensityValue: document.getElementById('airDensityValue'),
-    temperatureValue: document.getElementById('temperatureValue'),
-    computedDensityValue: document.getElementById('computedDensityValue'),
-    magnusValue: document.getElementById('magnusValue'),
-    rollingResistanceValue: document.getElementById('rollingResistanceValue'),
-    resetBallBtn: document.getElementById('resetBallBtn'),
-    controlsPanel: document.getElementById('controlsPanel'),
-    cameraFreeBtn: document.getElementById('cameraFreeBtn'),
-    cameraFollowBtn: document.getElementById('cameraFollowBtn'),
-    cameraTopBtn: document.getElementById('cameraTopBtn'),
-    cameraBallBtn: document.getElementById('cameraBallBtn')
+const cameraModeOptions = {
+    'حرة': 'free',
+    'تتبع': 'follow',
+    'علوية': 'top',
+    'قريبة': 'ball'
 };
 
-function updateUIValue(element, displayElement, value, formatter = (v) => v) {
-    element.value = value;
-    displayElement.textContent = formatter(value);
-}
+const guiState = {
+    cameraMode: 'follow',
+    computedAirDensity: physicsConfig.computedAirDensity,
+    resetBall: () => {
+        resetBall(ballBody);
+        resetTrail();
+    }
+};
+
+const guiControllers = {};
 
 function applyPhysicsConfig() {
     updateContactMaterial(ballGroundContact, physicsConfig.friction, physicsConfig.restitution);
     updateGravity(world, physicsConfig.gravity);
 }
 
-function updateComputedDensityDisplay() {
-    uiElements.computedDensityValue.textContent = physicsConfig.computedAirDensity.toFixed(3);
+function refreshComputedDensity() {
+    guiState.computedAirDensity = physicsConfig.computedAirDensity;
+    guiControllers.computedAirDensity?.updateDisplay();
 }
 
-function updateFromSlider(element, key, displayElement, formatter = (v) => v) {
-    element.addEventListener('input', (event) => {
-        physicsConfig[key] = Number(event.target.value);
-        displayElement.textContent = formatter(physicsConfig[key]);
+function handleConfigChange(key) {
+    if (key === 'airDensity' || key === 'temperature') {
+        refreshComputedDensity();
+    }
 
-        if (key === 'airDensity' || key === 'temperature') {
-            updateComputedDensityDisplay();
-        }
+    if (key === 'friction' || key === 'restitution' || key === 'gravity') {
+        applyPhysicsConfig();
+    }
+}
 
-        if (key === 'friction' || key === 'restitution' || key === 'gravity') {
-            applyPhysicsConfig();
-        }
+function addConfigControl(folder, key, label, min, max, step, decimals) {
+    const controller = folder
+        .add(physicsConfig, key, min, max, step)
+        .name(label)
+        .onChange(() => handleConfigChange(key));
+
+    if (decimals !== undefined) {
+        controller.decimals(decimals);
+    }
+
+    guiControllers[key] = controller;
+    return controller;
+}
+
+function isGuiTarget(target) {
+    return target instanceof Element && Boolean(target.closest('.lil-gui'));
+}
+
+function createSimulationGUI() {
+    const gui = new GUI({
+        title: 'إعدادات المحاكاة',
+        width: 258,
+        touchStyles: false
     });
+    gui.domElement.classList.add('compact-football-gui');
+    gui.domElement.dir = 'ltr';
+
+    const cameraFolder = gui.addFolder('الكاميرا');
+    guiControllers.cameraMode = cameraFolder
+        .add(guiState, 'cameraMode', cameraModeOptions)
+        .name('الوضع')
+        .onChange(setCameraMode);
+
+    const kickFolder = gui.addFolder('الركلة');
+    addConfigControl(kickFolder, 'strength', 'القوة', 5, 35, 0.5, 1);
+    addConfigControl(kickFolder, 'angle', 'الارتفاع', 0, 45, 1, 0);
+    addConfigControl(kickFolder, 'spin', 'الدوران', 0, 20, 0.5, 1);
+    addConfigControl(kickFolder, 'aimAngle', 'الاتجاه', -45, 45, 1, 0);
+
+    const physicsFolder = gui.addFolder('الفيزياء');
+    addConfigControl(physicsFolder, 'friction', 'الاحتكاك', 0, 1, 0.01, 2);
+    addConfigControl(physicsFolder, 'restitution', 'الارتداد', 0, 0.9, 0.01, 2);
+    addConfigControl(physicsFolder, 'magnus', 'ماغنوس', 0, 1, 0.01, 2);
+    addConfigControl(physicsFolder, 'rollingResistance', 'التدحرج', 0, 0.1, 0.001, 3);
+    physicsFolder.close();
+
+    const environmentFolder = gui.addFolder('الهواء والجاذبية');
+    addConfigControl(environmentFolder, 'gravity', 'الجاذبية', 0, 25, 0.01, 2);
+    addConfigControl(environmentFolder, 'airDensity', 'كثافة الهواء', 0.5, 2, 0.005, 3);
+    addConfigControl(environmentFolder, 'temperature', 'الحرارة', -20, 40, 1, 0);
+    guiControllers.computedAirDensity = environmentFolder
+        .add(guiState, 'computedAirDensity')
+        .name('الكثافة المحسوبة')
+        .decimals(3)
+        .listen()
+        .disable();
+    environmentFolder.close();
+
+    gui.add(guiState, 'resetBall').name('إعادة الكرة');
+
+    return gui;
 }
-
-updateUIValue(uiElements.kickStrength, uiElements.kickStrengthValue, physicsConfig.strength);
-updateUIValue(uiElements.launchAngle, uiElements.launchAngleValue, physicsConfig.angle, (v) => `${v}°`);
-updateUIValue(uiElements.spin, uiElements.spinValue, physicsConfig.spin);
-updateUIValue(uiElements.aimAngle, uiElements.aimAngleValue, physicsConfig.aimAngle, (v) => `${v}°`);
-updateUIValue(uiElements.friction, uiElements.frictionValue, physicsConfig.friction, (v) => v.toFixed(2));
-updateUIValue(uiElements.restitution, uiElements.restitutionValue, physicsConfig.restitution, (v) => v.toFixed(2));
-updateUIValue(uiElements.gravity, uiElements.gravityValue, physicsConfig.gravity, (v) => `${v.toFixed(2)} m/s^2`);
-updateUIValue(uiElements.airDensity, uiElements.airDensityValue, physicsConfig.airDensity, (v) => `${v.toFixed(3)} kg/m³`);
-updateUIValue(uiElements.temperature, uiElements.temperatureValue, physicsConfig.temperature, (v) => `${v}°C`);
-updateUIValue(uiElements.magnus, uiElements.magnusValue, physicsConfig.magnus, (v) => v.toFixed(2));
-updateUIValue(uiElements.rollingResistance, uiElements.rollingResistanceValue, physicsConfig.rollingResistance, (v) => v.toFixed(3));
-updateComputedDensityDisplay();
-
-updateFromSlider(uiElements.kickStrength, 'strength', uiElements.kickStrengthValue);
-updateFromSlider(uiElements.launchAngle, 'angle', uiElements.launchAngleValue, (v) => `${v}°`);
-updateFromSlider(uiElements.spin, 'spin', uiElements.spinValue);
-updateFromSlider(uiElements.aimAngle, 'aimAngle', uiElements.aimAngleValue, (v) => `${v}°`);
-updateFromSlider(uiElements.friction, 'friction', uiElements.frictionValue, (v) => v.toFixed(2));
-updateFromSlider(uiElements.restitution, 'restitution', uiElements.restitutionValue, (v) => v.toFixed(2));
-updateFromSlider(uiElements.gravity, 'gravity', uiElements.gravityValue, (v) => `${v.toFixed(2)} m/s^2`);
-updateFromSlider(uiElements.airDensity, 'airDensity', uiElements.airDensityValue, (v) => `${v.toFixed(3)} kg/m³`);
-updateFromSlider(uiElements.temperature, 'temperature', uiElements.temperatureValue, (v) => `${v}°C`);
-updateFromSlider(uiElements.magnus, 'magnus', uiElements.magnusValue, (v) => v.toFixed(2));
-updateFromSlider(uiElements.rollingResistance, 'rollingResistance', uiElements.rollingResistanceValue, (v) => v.toFixed(3));
-applyPhysicsConfig();
 
 createSurroundingArea(scene);
 createFootballField(scene);
@@ -163,21 +178,12 @@ const cameraState = {
     lastMoveDirection: new THREE.Vector3(0, 0, -1)
 };
 
-const cameraButtons = {
-    free: uiElements.cameraFreeBtn,
-    follow: uiElements.cameraFollowBtn,
-    top: uiElements.cameraTopBtn,
-    ball: uiElements.cameraBallBtn
-};
-
 function setCameraMode(mode) {
     cameraState.mode = mode;
+    guiState.cameraMode = mode;
+    guiControllers.cameraMode?.updateDisplay();
     controls.enableRotate = mode === 'free';
     controls.enablePan = mode === 'free';
-
-    Object.entries(cameraButtons).forEach(([key, button]) => {
-        button.classList.toggle('active', key === mode);
-    });
 }
 
 function updateCamera(delta) {
@@ -211,11 +217,10 @@ function updateCamera(delta) {
     controls.target.lerp(cameraState.desiredTarget, blend);
 }
 
+createSimulationGUI();
+refreshComputedDensity();
+applyPhysicsConfig();
 setCameraMode('follow');
-
-Object.entries(cameraButtons).forEach(([mode, button]) => {
-    button.addEventListener('click', () => setCameraMode(mode));
-});
 
 const shotDirectionScratch = new THREE.Vector3();
 const kickDirectionScratch = new THREE.Vector3();
@@ -456,7 +461,7 @@ function updateDirectionIndicator(delta = 0) {
 }
 
 window.addEventListener('mousedown', (event) => {
-    if (event.button !== 0 || uiElements.controlsPanel.contains(event.target)) {
+    if (event.button !== 0 || isGuiTarget(event.target)) {
         return;
     }
 
@@ -469,11 +474,6 @@ window.addEventListener('mousedown', (event) => {
         curve: physicsConfig.aimAngle / 45
     });
     startTrail();
-});
-
-uiElements.resetBallBtn.addEventListener('click', () => {
-    resetBall(ballBody);
-    resetTrail();
 });
 
 window.addEventListener('keydown', (event) => {
