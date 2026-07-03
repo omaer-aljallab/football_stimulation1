@@ -59,6 +59,71 @@
             font-size: 16px;
         }
 
+        #impact-control {
+            top: 12px;
+            left: 12px;
+            width: 178px;
+            padding: 12px;
+            border-radius: 8px;
+            z-index: 22;
+            direction: rtl;
+        }
+
+        .impact-title {
+            margin: 0 0 9px;
+            color: var(--accent);
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .impact-pad {
+            position: relative;
+            width: 138px;
+            height: 138px;
+            margin: 0 auto;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            background:
+                radial-gradient(circle at center, rgba(255, 255, 255, 0.18) 0 2px, transparent 3px),
+                linear-gradient(90deg, transparent 49%, rgba(255, 255, 255, 0.24) 50%, transparent 51%),
+                linear-gradient(0deg, transparent 49%, rgba(255, 255, 255, 0.24) 50%, transparent 51%),
+                radial-gradient(circle at 38% 30%, rgba(255, 255, 255, 0.2), rgba(67, 209, 122, 0.12) 48%, rgba(3, 8, 11, 0.62) 72%);
+            cursor: pointer;
+            touch-action: none;
+        }
+
+        .impact-pad::after {
+            content: "";
+            position: absolute;
+            inset: 14px;
+            border: 1px dashed rgba(255, 255, 255, 0.25);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        .impact-marker {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid #06100b;
+            background: #7ee7a7;
+            box-shadow: 0 0 18px rgba(126, 231, 167, 0.75);
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+
+        .impact-readout {
+            margin-top: 9px;
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 1.6;
+            text-align: center;
+            direction: rtl;
+        }
+
         .lil-gui.lil-root.compact-football-gui {
             width: 258px !important;
             max-height: calc(100vh - 24px);
@@ -139,6 +204,18 @@
                 display: none;
             }
 
+            #impact-control {
+                width: 154px;
+                padding: 9px;
+                left: 8px;
+                top: 8px;
+            }
+
+            .impact-pad {
+                width: 116px;
+                height: 116px;
+            }
+
             .lil-gui.lil-root.compact-football-gui {
                 width: min(244px, calc(100vw - 16px)) !important;
                 right: 8px;
@@ -153,13 +230,20 @@
     </style>
 </head>
 <body>
-    <div id="info" class="panel">
+    <!-- <div id="info" class="panel">
         <h3>محاكاة حركة كرة القدم</h3>
         الماوس الأيسر: ركل الكرة باتجاه الكاميرا<br>
         السحب بالماوس: تدوير الكاميرا حول الملعب<br>
         عجلة الماوس: تقريب وإبعاد الكاميرا<br>
         1/2/3/4: تغيير وضع الكاميرا<br>
         R: إعادة الكرة إلى الوسط
+    </div> -->
+    <div id="impact-control" class="panel">
+        <div class="impact-title">نقطة الصدم</div>
+        <div id="impact-pad" class="impact-pad">
+            <div id="impact-marker" class="impact-marker"></div>
+        </div>
+        <div id="impact-readout" class="impact-readout"></div>
     </div>
     <script type="module" src="main.js"></script>
 </body>

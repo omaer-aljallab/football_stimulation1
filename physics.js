@@ -17,12 +17,20 @@ const GOAL_HEIGHT = 2.44;
 const GOAL_DEPTH = 2.25;
 const AIR_SPIN_DAMPING = 0.05;
 const GROUND_SPIN_DAMPING = 1.25;
+const MAX_KICK_ANGULAR_SPEED = 70;
+const IMPACT_LINEAR_SIDE = 0.42;
+const IMPACT_LINEAR_LIFT = 0.88;
+const IMPACT_SPIN_TRANSFER = 0.2;
 
 const scratchForce = new THREE.Vector3();
 const scratchVector = new THREE.Vector3();
 const scratchNormal = new THREE.Vector3();
 const scratchImpulse = new THREE.Vector3();
 const scratchPosition = new THREE.Vector3();
+const scratchRight = new THREE.Vector3();
+const scratchUp = new THREE.Vector3(0, 1, 0);
+const scratchContact = new THREE.Vector3();
+const scratchLaunch = new THREE.Vector3();
 const NORMAL_POS_X = new THREE.Vector3(1, 0, 0);
 const NORMAL_NEG_X = new THREE.Vector3(-1, 0, 0);
 const NORMAL_POS_Z = new THREE.Vector3(0, 0, 1);
@@ -46,6 +54,36 @@ function isFiniteVector(vector) {
 
 function getBallInertia(body) {
     return body.inertia || BALL_INERTIA_FACTOR * body.mass * body.radius ** 2;
+}
+
+function clampImpactPoint(point = {}) {
+    let x = clamp(Number(point.x ?? 0), -0.92, 0.92);
+    let y = clamp(Number(point.y ?? 0), -0.92, 0.92);
+    const length = Math.hypot(x, y);
+
+    if (length > 0.92) {
+        x = x / length * 0.92;
+        y = y / length * 0.92;
+    }
+
+    return { x, y };
+}
+
+export function computeImpactLaunchDirection(direction, impactPoint = {}, target = scratchLaunch) {
+    const horizontalDirection = target.set(direction.x, 0, direction.z);
+    if (horizontalDirection.lengthSq() < 1e-6) {
+        horizontalDirection.set(0, 0, -1);
+    }
+    horizontalDirection.normalize();
+
+    const impact = clampImpactPoint(impactPoint);
+    scratchRight.set(-horizontalDirection.z, 0, horizontalDirection.x).normalize();
+
+    return target
+        .copy(horizontalDirection)
+        .addScaledVector(scratchRight, -impact.x * IMPACT_LINEAR_SIDE)
+        .addScaledVector(scratchUp, -impact.y * IMPACT_LINEAR_LIFT)
+        .normalize();
 }
 
 function getAirDensity(config) {
@@ -458,43 +496,36 @@ export function createSecondGoalPhysics(world, zPosition = FIELD_HALF_LENGTH) {
 
 export function kickBall(ballBody, direction, options = {}) {
     const strength = clamp(Number(options.strength ?? 18), 0, 42);
-    const angleDeg = clamp(Number(options.angleDeg ?? 18), 0, 55);
-    const spin = clamp(Number(options.spin ?? 8), 0, 20);
-    const curve = clamp(Number(options.curve ?? 0), -1, 1);
+    const impact = clampImpactPoint(options.impactPoint);
 
     const horizontalDirection = new THREE.Vector3(direction.x, 0, direction.z);
     if (horizontalDirection.lengthSq() < 1e-6) {
         horizontalDirection.set(0, 0, -1);
     }
     horizontalDirection.normalize();
-
-    const angleRad = THREE.MathUtils.degToRad(angleDeg);
-    const horizontalSpeed = Math.cos(angleRad) * strength;
-    const verticalSpeed = Math.sin(angleRad) * strength;
+    scratchRight.set(-horizontalDirection.z, 0, horizontalDirection.x).normalize();
+    computeImpactLaunchDirection(horizontalDirection, impact, scratchLaunch);
 
     ballBody.position.y = Math.max(ballBody.position.y, ballBody.radius + 0.01);
-    ballBody.velocity.set(
-        horizontalDirection.x * horizontalSpeed,
-        verticalSpeed,
-        horizontalDirection.z * horizontalSpeed
-    );
+    ballBody.velocity.copy(scratchLaunch).multiplyScalar(strength);
 
-    const rollingSpin = horizontalSpeed / ballBody.radius;
-    const backspinAmount = clamp(
-        rollingSpin * (0.18 + spin * 0.02) + angleDeg * 0.12,
-        0,
-        MAX_KICK_BACKSPIN
-    );
-    const sideSpinAmount = curve * clamp(
-        6 + spin * 1.55 + strength * 0.25 + Math.abs(curve) * 8,
-        0,
-        MAX_KICK_SIDESPIN
-    );
-    const rollingAxis = new THREE.Vector3(horizontalDirection.z, 0, -horizontalDirection.x);
+    const surfaceDepth = Math.sqrt(Math.max(0.08, 1 - impact.x ** 2 - impact.y ** 2));
+    scratchContact
+        .copy(horizontalDirection).multiplyScalar(-surfaceDepth * ballBody.radius)
+        .addScaledVector(scratchRight, impact.x * ballBody.radius)
+        .addScaledVector(scratchUp, impact.y * ballBody.radius);
 
+    scratchImpulse.copy(scratchLaunch).multiplyScalar(ballBody.mass * strength);
     ballBody.angularVelocity
-        .copy(rollingAxis.multiplyScalar(backspinAmount))
-        .add(new THREE.Vector3(0, sideSpinAmount, 0));
+        .copy(scratchContact)
+        .cross(scratchImpulse)
+        .multiplyScalar(IMPACT_SPIN_TRANSFER / getBallInertia(ballBody));
+
+    const angularSpeed = ballBody.angularVelocity.length();
+    if (angularSpeed > MAX_KICK_ANGULAR_SPEED) {
+        ballBody.angularVelocity.multiplyScalar(MAX_KICK_ANGULAR_SPEED / angularSpeed);
+    }
+
     ballBody.wakeUp();
 }
 

@@ -8,7 +8,7 @@ import {
     createBallMesh,
     handleResize,
     createSurroundingArea,
-    createFieldBoundsVisual
+    createFieldBorder
 } from './scene.js';
 import {
     createPhysicsWorld,
@@ -22,7 +22,8 @@ import {
     stepPhysics,
     updateContactMaterial,
     updateGravity,
-    computeAutoDrag
+    computeAutoDrag,
+    computeImpactLaunchDirection
 } from './physics.js';
 
 const FIELD_HALF_WIDTH = 34;
@@ -36,9 +37,6 @@ createGroundBody(world, groundMaterial);
 
 const physicsConfig = {
     strength: 18,
-    angle: 18,
-    spin: 8,
-    aimAngle: 0,
     friction: 0.5,
     restitution: 0.7,
     gravity: 9.81,
@@ -50,6 +48,8 @@ const physicsConfig = {
     dragCoefficient: 0.25,
     ballRadius: 0.22,
     aerodynamicRadius: 0.11,
+    impactX: 0,
+    impactY: -0.28,
 
     get computedAirDensity() {
         const tempKelvin = this.temperature + 273.15;
@@ -65,6 +65,8 @@ const cameraModeOptions = {
     'قريبة': 'ball'
 };
 
+
+//current state
 const guiState = {
     cameraMode: 'follow',
     computedAirDensity: physicsConfig.computedAirDensity,
@@ -131,12 +133,11 @@ function createSimulationGUI() {
 
     const kickFolder = gui.addFolder('الركلة');
     addConfigControl(kickFolder, 'strength', 'القوة', 5, 35, 0.5, 1);
-    addConfigControl(kickFolder, 'angle', 'الارتفاع', 0, 45, 1, 0);
-    addConfigControl(kickFolder, 'spin', 'الدوران', 0, 20, 0.5, 1);
-    addConfigControl(kickFolder, 'aimAngle', 'الاتجاه', -45, 45, 1, 0);
 
     const physicsFolder = gui.addFolder('الفيزياء');
     addConfigControl(physicsFolder, 'friction', 'الاحتكاك', 0, 1, 0.01, 2);
+
+
     addConfigControl(physicsFolder, 'restitution', 'الارتداد', 0, 0.9, 0.01, 2);
     addConfigControl(physicsFolder, 'magnus', 'ماغنوس', 0, 1, 0.01, 2);
     addConfigControl(physicsFolder, 'rollingResistance', 'التدحرج', 0, 0.1, 0.001, 3);
@@ -161,7 +162,7 @@ function createSimulationGUI() {
 
 createSurroundingArea(scene);
 createFootballField(scene);
-createFieldBoundsVisual(scene);
+createFieldBorder(scene);
 createGoal(scene, -FIELD_HALF_LENGTH, 0);
 createGoal(scene, FIELD_HALF_LENGTH, Math.PI);
 
@@ -225,12 +226,14 @@ setCameraMode('follow');
 const shotDirectionScratch = new THREE.Vector3();
 const kickDirectionScratch = new THREE.Vector3();
 const indicatorDirectionScratch = new THREE.Vector3();
+const launchDirectionScratch = new THREE.Vector3();
 const trailColor = new THREE.Color();
 const trailStartColor = new THREE.Color(0x32f6ff);
 const trailEndColor = new THREE.Color(0xffd166);
-const trailPoints = [];
+const maxSavedTrails = 3;
+const savedTrails = [];
 const emptyGeometry = new THREE.BufferGeometry();
-const trailGlowGeometry = new THREE.BufferGeometry();
+// const trailGlowGeometry = new THREE.BufferGeometry();
 const trailCoreMaterial = new THREE.MeshBasicMaterial({
     color: 0xffffff,
     transparent: true,
@@ -245,23 +248,48 @@ const trailTubeMaterial = new THREE.MeshBasicMaterial({
     depthWrite: false,
     blending: THREE.AdditiveBlending
 });
-const trailGlowMaterial = new THREE.PointsMaterial({
-    size: 0.42,
-    sizeAttenuation: true,
-    vertexColors: true,
-    transparent: true,
-    opacity: 0.82,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending
-});
-const trajectoryTrail = new THREE.Group();
-const trajectoryTube = new THREE.Mesh(emptyGeometry.clone(), trailTubeMaterial);
-const trajectoryCore = new THREE.Mesh(emptyGeometry.clone(), trailCoreMaterial);
-const trajectoryGlow = new THREE.Points(trailGlowGeometry, trailGlowMaterial);
-trajectoryTrail.add(trajectoryTube, trajectoryCore, trajectoryGlow);
-trajectoryGlow.visible = false;
-trajectoryTrail.visible = false;
-scene.add(trajectoryTrail);
+// const trailGlowMaterial = new THREE.PointsMaterial({
+//     size: 0.42,
+//     sizeAttenuation: true,
+//     vertexColors: true,
+//     transparent: true,
+//     opacity: 0.82,
+//     depthWrite: false,
+//     blending: THREE.AdditiveBlending
+// });
+function createTrajectoryTrail() {
+    const group = new THREE.Group();
+    const tube = new THREE.Mesh(emptyGeometry.clone(), trailTubeMaterial);
+    const core = new THREE.Mesh(emptyGeometry.clone(), trailCoreMaterial);
+    // const glow = new THREE.Points(trailGlowGeometry, trailGlowMaterial);
+    group.add(tube, core/*, glow*/);
+    // glow.visible = false;
+    group.visible = false;
+    scene.add(group);
+
+    return {
+        points: [],
+        group,
+        tube,
+        core
+    };
+}
+
+function disposeTrajectoryTrail(trail) {
+    if (!trail) return;
+
+    trail.tube.geometry.dispose();
+    trail.core.geometry.dispose();
+    scene.remove(trail.group);
+}
+
+let activeTrail = createTrajectoryTrail();
+
+function trimSavedTrails(maxCount) {
+    while (savedTrails.length > maxCount) {
+        disposeTrajectoryTrail(savedTrails.shift());
+    }
+}
 
 const aimMaterial = new THREE.MeshBasicMaterial({
     color: 0x28ffb8,
@@ -303,17 +331,17 @@ const aimHead = new THREE.Mesh(
 );
 aimHead.rotation.z = -Math.PI / 2;
 
-const aimChevrons = [];
-for (let i = 0; i < 3; i += 1) {
-    const chevron = new THREE.Mesh(
-        new THREE.ConeGeometry(0.22, 0.45, 3),
-        aimCoreMaterial.clone()
-    );
-    chevron.rotation.z = -Math.PI / 2;
-    chevron.rotation.y = Math.PI / 6;
-    aimArrowGroup.add(chevron);
-    aimChevrons.push(chevron);
-}
+// const aimChevrons = [];
+// for (let i = 0; i < 3; i += 1) {
+//     const chevron = new THREE.Mesh(
+//         new THREE.ConeGeometry(0.22, 0.45, 3),
+//         aimCoreMaterial.clone()
+//     );
+//     chevron.rotation.z = -Math.PI / 2;
+//     chevron.rotation.y = Math.PI / 6;
+//     aimArrowGroup.add(chevron);
+//     aimChevrons.push(chevron);
+// }
 
 aimArrowGroup.add(aimGlow, aimCore, aimHead);
 directionIndicator.add(aimRing, aimArrowGroup);
@@ -322,6 +350,75 @@ scene.add(directionIndicator);
 let trailActive = false;
 let indicatorPulse = 0;
 
+const impactPad = document.getElementById('impact-pad');
+const impactMarker = document.getElementById('impact-marker');
+const impactReadout = document.getElementById('impact-readout');
+
+function getImpactPoint() {
+    return {
+        x: physicsConfig.impactX,
+        y: physicsConfig.impactY
+    };
+}
+
+function getImpactDescription() {
+    const side = Math.abs(physicsConfig.impactX) < 0.08
+        ? 'وسط'
+        : physicsConfig.impactX > 0 ? 'يمين' : 'يسار';
+    const height = Math.abs(physicsConfig.impactY) < 0.08
+        ? 'وسط'
+        : physicsConfig.impactY > 0 ? 'فوق' : 'تحت';
+
+    return `${height} / ${side}`;
+}
+
+function setImpactPoint(x, y) {
+    const length = Math.hypot(x, y);
+    if (length > 0.92) {
+        x = x / length * 0.92;
+        y = y / length * 0.92;
+    }
+
+    physicsConfig.impactX = THREE.MathUtils.clamp(x, -0.92, 0.92);
+    physicsConfig.impactY = THREE.MathUtils.clamp(y, -0.92, 0.92);
+    updateImpactControl();
+}
+
+function updateImpactControl() {
+    if (!impactMarker || !impactReadout) return;
+
+    impactMarker.style.left = `${50 + physicsConfig.impactX * 50}%`;
+    impactMarker.style.top = `${50 - physicsConfig.impactY * 50}%`;
+    impactReadout.textContent = getImpactDescription();
+}
+
+function updateImpactFromPointer(event) {
+    if (!impactPad) return;
+
+    const rect = impactPad.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const radius = rect.width / 2;
+    const x = (event.clientX - centerX) / radius;
+    const y = -(event.clientY - centerY) / radius;
+    setImpactPoint(x, y);
+}
+
+if (impactPad) {
+    impactPad.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        impactPad.setPointerCapture(event.pointerId);
+        updateImpactFromPointer(event);
+    });
+
+    impactPad.addEventListener('pointermove', (event) => {
+        if (event.buttons !== 1) return;
+        updateImpactFromPointer(event);
+    });
+}
+
+updateImpactControl();
+
 function getShotDirection(target = shotDirectionScratch) {
     camera.getWorldDirection(target);
     target.y = 0;
@@ -329,83 +426,96 @@ function getShotDirection(target = shotDirectionScratch) {
         target.set(0, 0, -1);
     }
     target.normalize();
-
-    const yaw = THREE.MathUtils.degToRad(physicsConfig.aimAngle);
-    const cos = Math.cos(yaw);
-    const sin = Math.sin(yaw);
-    const x = target.x * cos - target.z * sin;
-    const z = target.x * sin + target.z * cos;
-    return target.set(x, 0, z).normalize();
+    return target;
 }
 
-function rebuildTrailGeometry() {
-    const pointCount = trailPoints.length;
+function rebuildTrailGeometry(trail = activeTrail) {
+    const pointCount = trail.points.length;
     const positions = new Float32Array(pointCount * 3);
     const colors = new Float32Array(pointCount * 3);
 
-    for (let i = 0; i < pointCount; i += 1) {
-        const point = trailPoints[i];
-        const offset = i * 3;
-        const t = pointCount <= 1 ? 0 : i / (pointCount - 1);
-        trailColor.copy(trailStartColor).lerp(trailEndColor, t);
+    // for (let i = 0; i < pointCount; i += 1) {
+    //     const point = trail.points[i];
+    //     const offset = i * 3;
+    //     const t = pointCount <= 1 ? 0 : i / (pointCount - 1);
+    //     trailColor.copy(trailStartColor).lerp(trailEndColor, t);
 
-        positions[offset] = point.x;
-        positions[offset + 1] = point.y + 0.03;
-        positions[offset + 2] = point.z;
-        colors[offset] = trailColor.r;
-        colors[offset + 1] = trailColor.g;
-        colors[offset + 2] = trailColor.b;
-    }
+    //     positions[offset] = point.x;
+    //     positions[offset + 1] = point.y + 0.03;
+    //     positions[offset + 2] = point.z;
+    //     colors[offset] = trailColor.r;
+    //     colors[offset + 1] = trailColor.g;
+    //     colors[offset + 2] = trailColor.b;
+    // }
 
-    trailGlowGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    trailGlowGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    trailGlowGeometry.computeBoundingSphere();
+    // trailGlowGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    // trailGlowGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    // trailGlowGeometry.computeBoundingSphere();
 
     const visible = pointCount > 1;
-    trajectoryTrail.visible = visible;
-    trajectoryGlow.visible = visible;
-    trajectoryTube.visible = visible;
-    trajectoryCore.visible = visible;
+    trail.group.visible = visible;
+    // trajectoryGlow.visible = visible;
+    trail.tube.visible = visible;
+    trail.core.visible = visible;
 
-    trajectoryTube.geometry.dispose();
-    trajectoryCore.geometry.dispose();
+    trail.tube.geometry.dispose();
+    trail.core.geometry.dispose();
 
     if (!visible) {
-        trajectoryTube.geometry = emptyGeometry.clone();
-        trajectoryCore.geometry = emptyGeometry.clone();
+        trail.tube.geometry = emptyGeometry.clone();
+        trail.core.geometry = emptyGeometry.clone();
         return;
     }
 
-    const curvePoints = trailPoints.map((point) => new THREE.Vector3(point.x, point.y + 0.06, point.z));
+    const curvePoints = trail.points.map((point) => new THREE.Vector3(point.x, point.y + 0.06, point.z));
     const curve = new THREE.CatmullRomCurve3(curvePoints);
     const segments = Math.min(220, Math.max(12, pointCount * 4));
-    trajectoryTube.geometry = new THREE.TubeGeometry(curve, segments, 0.12, 12, false);
-    trajectoryCore.geometry = new THREE.TubeGeometry(curve, segments, 0.028, 8, false);
+    trail.tube.geometry = new THREE.TubeGeometry(curve, segments, 0.12, 12, false);
+    trail.core.geometry = new THREE.TubeGeometry(curve, segments, 0.028, 8, false);
 }
 
 function startTrail() {
+    finishActiveTrail(maxSavedTrails - 1);
+
     trailActive = true;
-    trailPoints.length = 0;
-    trailPoints.push(ballBody.position.clone());
-    rebuildTrailGeometry();
+    activeTrail.points.push(ballBody.position.clone());
+    rebuildTrailGeometry(activeTrail);
+}
+
+function finishActiveTrail(maxSavedCount = maxSavedTrails) {
+    trailActive = false;
+
+    if (activeTrail.points.length > 1) {
+        savedTrails.push(activeTrail);
+        trimSavedTrails(maxSavedCount);
+        activeTrail = createTrajectoryTrail();
+        return;
+    }
+
+    activeTrail.points.length = 0;
+    rebuildTrailGeometry(activeTrail);
 }
 
 function resetTrail() {
     trailActive = false;
-    trailPoints.length = 0;
-    rebuildTrailGeometry();
+    disposeTrajectoryTrail(activeTrail);
+    activeTrail = createTrajectoryTrail();
+
+    while (savedTrails.length > 0) {
+        disposeTrajectoryTrail(savedTrails.pop());
+    }
 }
 
 function updateTrail() {
     if (!trailActive) return;
 
-    const lastPoint = trailPoints[trailPoints.length - 1];
+    const lastPoint = activeTrail.points[activeTrail.points.length - 1];
     if (!lastPoint || lastPoint.distanceToSquared(ballBody.position) > 0.09) {
-        trailPoints.push(ballBody.position.clone());
-        if (trailPoints.length > 260) {
-            trailPoints.shift();
+        activeTrail.points.push(ballBody.position.clone());
+        if (activeTrail.points.length > 260) {
+            activeTrail.points.shift();
         }
-        rebuildTrailGeometry();
+        rebuildTrailGeometry(activeTrail);
     }
 }
 
@@ -417,18 +527,11 @@ function updateDirectionIndicator(delta = 0) {
 
     indicatorPulse += delta;
     const direction = getShotDirection(indicatorDirectionScratch);
-    const launchAngleRad = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(physicsConfig.angle, 0, 55));
+    const shotVector = computeImpactLaunchDirection(direction, getImpactPoint(), launchDirectionScratch);
     const length = THREE.MathUtils.clamp(3.8 + physicsConfig.strength * 0.12, 4.2, 8.2);
     const headLength = 1.05;
     const shaftLength = Math.max(1.5, length - headLength);
     const pulse = (Math.sin(indicatorPulse * 5.4) + 1) * 0.5;
-    const pitchLift = Math.sin(launchAngleRad);
-    const horizontalScale = Math.cos(launchAngleRad);
-    const shotVector = new THREE.Vector3(
-        direction.x * horizontalScale,
-        pitchLift,
-        direction.z * horizontalScale
-    ).normalize();
 
     directionIndicator.position.copy(ballBody.position);
     directionIndicator.position.y = ballBody.radius + 0.08;
@@ -451,17 +554,17 @@ function updateDirectionIndicator(delta = 0) {
     aimHead.position.x = shaftLength + headLength * 0.42;
     aimHead.material.opacity = 0.68 + pulse * 0.22;
 
-    aimChevrons.forEach((chevron, index) => {
-        const t = (index + 1) / (aimChevrons.length + 1);
-        chevron.position.x = shaftLength * t;
-        chevron.position.y = 0;
-        chevron.scale.setScalar(0.72 + pulse * 0.18);
-        chevron.material.opacity = 0.34 + pulse * 0.24;
-    });
+    // aimChevrons.forEach((chevron, index) => {
+    //     const t = (index + 1) / (aimChevrons.length + 1);
+    //     chevron.position.x = shaftLength * t;
+    //     chevron.position.y = 0;
+    //     chevron.scale.setScalar(0.72 + pulse * 0.18);
+    //     chevron.material.opacity = 0.34 + pulse * 0.24;
+    // });
 }
 
 window.addEventListener('mousedown', (event) => {
-    if (event.button !== 0 || isGuiTarget(event.target)) {
+    if (event.button !== 0 || isGuiTarget(event.target) || event.target.closest?.('#impact-control')) {
         return;
     }
 
@@ -469,9 +572,7 @@ window.addEventListener('mousedown', (event) => {
 
     kickBall(ballBody, rotatedDirection, {
         strength: physicsConfig.strength,
-        angleDeg: physicsConfig.angle,
-        spin: physicsConfig.spin,
-        curve: physicsConfig.aimAngle / 45
+        impactPoint: getImpactPoint()
     });
     startTrail();
 });
@@ -479,7 +580,7 @@ window.addEventListener('mousedown', (event) => {
 window.addEventListener('keydown', (event) => {
     if (event.key === 'r' || event.key === 'R') {
         resetBall(ballBody);
-        resetTrail();
+        finishActiveTrail();
     } else if (event.key === '1') {
         setCameraMode('free');
     } else if (event.key === '2') {
