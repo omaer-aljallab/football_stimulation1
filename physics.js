@@ -373,7 +373,7 @@ export function computeMagnusForce(body, magnusCoefficient = 0.25, airDensity = 
     const area = Math.PI * radius ** 2;
     const spinRatio = clamp((radius * spinSpeed) / speed, 0, 1.4);
     const liftCoefficient = clamp(1.15 * spinRatio, 0, 0.42) * coefficient;
-    const direction = body.velocity.clone().cross(body.angularVelocity);
+    const direction = body.angularVelocity.clone().cross(body.velocity);
     if (direction.lengthSq() < 1e-8) return null;
 
     const magnitude = 0.5 * density * area * liftCoefficient * speed ** 2;
