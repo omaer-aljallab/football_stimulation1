@@ -70,6 +70,7 @@ const cameraModeOptions = {
 const guiState = {
     cameraMode: 'follow',
     computedAirDensity: physicsConfig.computedAirDensity,
+    ballSpinPerSecond: 0,
     resetBall: () => {
         resetBall(ballBody);
         resetTrail();
@@ -86,6 +87,11 @@ function applyPhysicsConfig() {
 function refreshComputedDensity() {
     guiState.computedAirDensity = physicsConfig.computedAirDensity;
     guiControllers.computedAirDensity?.updateDisplay();
+}
+
+function refreshBallSpinSpeed() {
+    guiState.ballSpinPerSecond = ballBody.angularVelocity.length() / (Math.PI * 2);
+    guiControllers.ballSpinPerSecond?.updateDisplay();
 }
 
 function handleConfigChange(key) {
@@ -151,6 +157,12 @@ function createSimulationGUI() {
         .add(guiState, 'computedAirDensity')
         .name('الكثافة المحسوبة')
         .decimals(3)
+        .listen()
+        .disable();
+    guiControllers.ballSpinPerSecond = environmentFolder
+        .add(guiState, 'ballSpinPerSecond')
+        .name('سرعة دوران الكرة/ث')
+        .decimals(2)
         .listen()
         .disable();
     environmentFolder.close();
@@ -614,6 +626,7 @@ function animate() {
 
     ball.position.copy(ballBody.position);
     ball.quaternion.copy(ballBody.quaternion);
+    refreshBallSpinSpeed();
     updateTrail();
     updateDirectionIndicator(delta);
 
